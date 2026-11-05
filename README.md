@@ -1,4 +1,4 @@
-# Top-down 3D capsule controller (Unity 6 / NGO client-server)
+# Shoulder-camera capsule controller (Unity 6 / NGO client-server)
 
 This is an **MVP starter**, not a production-ready multiplayer combat solution. It provides mouse/gamepad 3D aiming (yaw AND pitch), with the entire attack aligned to the player's aim vector, server-driven movement, simple procedural weapon swings, horizontal/spin/thrust/vertical attack probes, parry/block/dodge/sprint/jump, and injury-system-ready hit reports. Damage intentionally uses **no HP**.
 
@@ -94,3 +94,9 @@ Open `Assets/Scenes/SampleScene.unity` in Unity **6000.3.0f1**. The existing Net
 For a second local peer, launch a client build and click Start Client while the host runs. Separate-machine clients require a reachable transport address configured before connecting. Two-peer movement, attacks, parry/block, jump and dodge/sprint still need Play Mode validation.
 
 The requested `moveAction = input.AddAction("Move", InputActionType.Value, expectedControlLayout: "Vector2");` line is deliberately preserved. If Unity reports an API argument error there, resolve that exception separately with the project owner.
+
+## Shoulder camera V3 update
+
+The sample now uses a perspective ThirdPersonShoulderCamera on Main Camera. Mouse and right stick control look; the center reticle targets the world. WASD, left stick and dodge are relative to facing. Escape unlocks the mouse; left click relocks without attacking. Player already includes collider-free sunglasses. Camera collision uses ground/environment/wall layers (6/8/9); aiming also includes player/enemy (3/7). The old TopDownCameraFollow script is retained for compatibility but is not attached in SampleScene.
+
+See `Docs/ShoulderCameraSetup.txt` for full V3 controls and setup. This update supersedes the older top-down aiming and world-axis movement instructions above. Validate host/client look, movement, dodge, attack pitch, cursor recapture and camera obstruction in Unity.

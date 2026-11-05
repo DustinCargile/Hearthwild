@@ -1,0 +1,118 @@
+UNITY 6 - THIRD-PERSON SHOULDER CAMERA + PLAYER-RELATIVE MOVEMENT (V3)
+====================================================================
+
+WHAT IS FIXED
+-------------
+- W/S follows character forward/backward; A/D strafes relative to character yaw.
+- Dodge uses the same local-to-world rotation, rather than global X/Z.
+- Fixed top-down camera replaced by a third-person over-the-shoulder view.
+- Center-of-screen crosshair aims at the scene in 3D; strike pitch still matches the target.
+- Camera and mouse look work only for the local network owner.
+- Debug sunglasses can be added to the Player prefab using a Unity Editor menu item.
+
+INSTALLATION: EXISTING PROJECT (RECOMMENDED)
+--------------------------------------------
+1. BACK UP your working scripts and Player prefab first.
+2. Extract V3_PATCH.zip into your Unity project root. MERGE the Assets folder;
+   do not create a nested Assets/Assets directory. Two changed/new scripts
+   go into Assets/Scripts/Networking and Assets/Scripts/Camera; one editor
+   tool goes into Assets/Editor.
+3. On your SCENE'S Main Camera, REMOVE the TopDownCameraFollow COMPONENT.
+   You can delete its old .cs file if nothing else uses it. Do not put the
+   new camera on the networked Player prefab.
+4. Set the Main Camera's Projection = Perspective, Field of View = 60,
+   and tag = MainCamera. Add component ThirdPersonShoulderCamera.
+5. Set its Camera Collision Layers to Ground and Environment. Exclude Player,
+   Enemy, Hitbox, WeaponVisual, and Ignore Raycast from this mask.
+6. Keep the Player prefab's CharacterController, NetworkTransform (server
+   authority), WeaponVisualDriver, NetworkCapsuleController, and the exact
+   AimPitchPivot/ActiveWeapon/PracticeSword hierarchy you already tested.
+   The owner automatically assigns Camera.main to the shoulder camera.
+7. Camera initial suggested values:
+      Follow Distance       3.5
+      Shoulder Offset       +0.55
+      Target Height          1.55
+      Camera Rise           0.20
+      Position Sharpness   16
+      Initial Pitch          12 (positive means look down)
+      Min Pitch             -60 (look up)
+      Max Pitch             +70 (look down)
+      Mouse Degrees/Pixel   0.14
+8. Keep Aim Layers including Ground, Environment, Enemy, Hitbox and Player if
+   PvP is enabled. Keep Target Layers Enemy, Hitbox, Player if PvP is enabled.
+   Exclude WeaponVisual from aim. WeaponVisualDriver needs NO change.
+9. For best cursor behavior, use Input System Package (New) or Both in
+   Project Settings > Player > Active Input Handling.
+
+ADDING SUNGLASSES TO THE PLAYER PREFAB
+--------------------------------------
+1. Ensure Assets/Editor/CapsuleSunglassesBuilder.cs is in Assets/Editor.
+2. In the Project window SELECT your Player.prefab ASSET (preferred), then
+   use Tools > Combat Prototype > Add Sunglasses To Selected Player.
+3. This creates a DebugSunglasses child with 7 simple dark 3D shapes and
+   saves the selected prefab asset. Both material assets are placed in
+   Assets/CapsulePrototypeMaterials.
+4. The glasses face LOCAL +Z (the player's forward). Their default Y is
+   about 1.66, for a 2-unit-high capsule with feet at the Player root Y=0.
+5. If you select a Player scene instance instead, the tool modifies that
+   instance. Apply the added child as a prefab override to persist it.
+6. They have NO colliders; they are placed on Ignore Raycast, and require
+   NO NetworkObject/NetworkTransform. All clients see them via the prefab.
+7. For a differently sized capsule, adjust the DebugSunglasses position or
+   child dimensions in Prefab Mode. Do not scale the networked Player root.
+
+CONTROLS
+--------
+Mouse move        : Look/aim in 3D (X yaw, Y pitch)
+W/S                : Move forward/backward relative to facing
+A/D                : Strafe left/right relative to facing
+Gamepad left stick : Move relative to facing
+Gamepad right stick: Look around/aim
+Mouse left tap/RB  : Horizontal attack
+Mouse left hold/RB : Spin
+Mouse right tap/RT : Thrust
+Mouse right hold/RT: Vertical attack
+Ctrl/LT tap/hold   : Parry/block
+Shift/B tap/hold  : Dodge/sprint
+Space/A           : Jump
+Escape            : Unlock mouse for menus
+Left click        : Relock mouse (first click is not an attack)
+
+EXPECTED BEHAVIOR
+-----------------
+- When facing the world's +Z direction, W -> +Z.
+- Rotate the mouse so the character faces world's +X direction: W -> +X.
+- The same rotation makes A strafe toward +Z (left of an east-facing avatar).
+- Mouse up/down pitches the crosshair AND the weapon swing automatically.
+- Aiming at an enemy's knees should aim the strike downward appropriately.
+- Your local camera follows only your own player; no camera is network spawned.
+- The other client should see player body yaw and attack animations through
+  the existing server-authoritative Netcode/NetworkTransform system.
+- The glasses show on the front of the capsule when viewed from another
+  angle or by another player. From the rear shoulder camera they may be hidden.
+
+TROUBLESHOOTING
+---------------
+- Camera remains overhead: remove/disable TopDownCameraFollow on Main Camera.
+- Camera has no target: verify camera tag MainCamera; check console for error;
+  ensure player was spawned by NetworkManager and is the local owner.
+- Can't click Host: click Start Host before the cursor locks on player spawn.
+  Press Escape to unlock while playing.
+- Camera clips into level: set Camera Collision Layers = Ground/Environment.
+- Camera spins on its own: remove other camera scripts or Cinemachine Brain
+  controllers from the same camera until this test passes.
+- WASD still world-axis based: verify you replaced the exact old
+  NetworkCapsuleController.cs; don't keep multiple copies in your project.
+- No sunglasses: select Player.prefab asset then run Tools menu command.
+- UI pointer is invisible: press Escape and use the menu normally.
+
+LIMITATIONS
+-----------
+- Tested by source inspection and static checks, NOT compiled in the Unity
+  Editor. Your existing Netcode for GameObjects 2.x + Input System packages
+  remain required. Errors in your scene may require small integration fixes.
+- Server-authoritative character motion is still not client predicted; under
+  latency you may notice delayed movement/rotation on remote clients.
+- Collision remains approximate: this does not add precise blade sweeps,
+  anatomical hitboxes, injury effects, or network-replicated equipment changes.
+- Prototype GUI reticle is drawn with OnGUI; replace with a HUD later.

@@ -181,7 +181,7 @@ Camera:
   near clip plane: 0.3
   far clip plane: 1000
   field of view: 60
-  orthographic: 1
+  orthographic: 0
   orthographic size: 8
   m_Depth: -1
   m_CullingMask:
@@ -266,11 +266,27 @@ MonoBehaviour:
   m_GameObject: {fileID: 330585543}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2f599f0a4f39c44f949a71206b79001, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TopDownRPG.Networking.TopDownCameraFollow
-  cameraOffset: {x: 0, y: 13, z: -9}
-  followSharpness: 12
+  m_Script: {fileID: 11500000, guid: 61f5ce01cf7348b39ce46278eec719d0, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::TopDownRPG.Networking.ThirdPersonShoulderCamera
+  followDistance: 3.5
+  shoulderOffset: 0.55
+  targetHeight: 1.55
+  cameraRise: 0.2
+  positionSharpness: 16
+  mouseDegreesPerPixel: 0.14
+  stickDegreesPerSecond: 175
+  initialPitch: 12
+  minPitch: -60
+  maxPitch: 70
+  invertMouseY: 0
+  invertStickY: 0
+  cameraCollisionLayers:
+    serializedVersion: 2
+    m_Bits: 832
+  collisionRadius: 0.2
+  wallPadding: 0.08
+  showReticle: 1
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
