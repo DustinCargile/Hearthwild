@@ -227,7 +227,7 @@ GameObject:
   - component: {fileID: 844579430713482268}
   - component: {fileID: 9168744862890459866}
   - component: {fileID: 2546063669191532704}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Player
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -389,7 +389,7 @@ MonoBehaviour:
   parryCooldown: 0.6
   targetLayers:
     serializedVersion: 2
-    m_Bits: 128
+    m_Bits: 136
   obstructionLayers:
     serializedVersion: 2
     m_Bits: 768
