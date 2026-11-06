@@ -16,14 +16,14 @@ namespace TopDownRPG.Networking
         [Header("Camera / Aim")]
         [SerializeField] private Camera ownerCamera;
         [SerializeField] private Transform localAimMarker;
+        // A scene camera (not a child of the networked player). The local owner controls it.
+        private ThirdPersonShoulderCamera shoulderCamera;
         [Tooltip("Colliders the local camera can aim at (terrain, enemies, props). Exclude the local player's layer if possible.")]
         [SerializeField] private LayerMask aimLayers = ~0;
         [Tooltip("Start aimed strikes at this fraction of the capsule height above the feet.")]
         [SerializeField, Range(0.25f, 0.95f)] private float strikeOriginHeightFraction = 0.68f;
         [Tooltip("Clamp how steeply the player can aim up or down.")]
         [SerializeField, Range(0f, 89f)] private float maxAimPitch = 65f;
-        [Tooltip("Screen distance from the player to the right-stick aiming cursor, as a fraction of the shortest screen dimension.")]
-        [SerializeField, Range(0.05f, 0.45f)] private float gamepadAimRadius = 0.25f;
         [SerializeField, Min(0.5f)] private float maxAimRayDistance = 150f;
 
         [Header("Movement")]
@@ -52,19 +52,15 @@ namespace TopDownRPG.Networking
         private CharacterController capsule;
         private InputActionMap input;
         private InputAction moveAction;
-        private InputAction pointerAction;
-        private InputAction stickAimAction;
         private InputAction horizontalAction;
         private InputAction thrustAction;
         private InputAction defendAction;
         private InputAction mobilityAction;
         private InputAction jumpAction;
 
-        private bool useGamepadAim;
         private float aimYaw;
         private float aimPitch;
         private Vector3 aimPoint;
-        private Vector2 gamepadAimDirection = Vector2.up;
         private readonly RaycastHit[] aimRayBuffer = new RaycastHit[64];
         private float nextInputSend;
         private float horizontalPressedAt;
@@ -129,8 +125,14 @@ namespace TopDownRPG.Networking
             if (IsOwner && IsClient)
             {
                 if (ownerCamera == null) ownerCamera = Camera.main;
-                if (ownerCamera != null && ownerCamera.TryGetComponent(out TopDownCameraFollow cameraFollow))
-                    cameraFollow.Target = transform;
+                if (ownerCamera != null)
+                {
+                    shoulderCamera = ownerCamera.GetComponent<ThirdPersonShoulderCamera>();
+                    if (shoulderCamera != null)
+                        shoulderCamera.Target = transform;
+                    else
+                        Debug.LogError("Main Camera is missing ThirdPersonShoulderCamera. Remove TopDownCameraFollow and add ThirdPersonShoulderCamera.", this);
+                }
 
                 aimYaw = transform.eulerAngles.y;
                 aimPitch = 0f;
@@ -140,7 +142,13 @@ namespace TopDownRPG.Networking
             }
         }
 
-        public override void OnNetworkDespawn() => DisposeInput();
+        public override void OnNetworkDespawn()
+        {
+            if (IsOwner && shoulderCamera != null && shoulderCamera.Target == transform)
+                shoulderCamera.Target = null;
+            DisposeInput();
+        }
+
         private void OnDestroy() => DisposeInput();
 
         private void DisposeInput()
@@ -160,9 +168,6 @@ namespace TopDownRPG.Networking
                 .With("Up", "<Keyboard>/w").With("Down", "<Keyboard>/s")
                 .With("Left", "<Keyboard>/a").With("Right", "<Keyboard>/d");
             moveAction.AddBinding("<Gamepad>/leftStick");
-
-            pointerAction = input.AddAction("Pointer", InputActionType.Value, "<Mouse>/position");
-            stickAimAction = input.AddAction("StickAim", InputActionType.Value, "<Gamepad>/rightStick");
 
             horizontalAction = input.AddAction("HorizontalOrSpin", InputActionType.Button);
             horizontalAction.AddBinding("<Mouse>/leftButton");
@@ -198,55 +203,47 @@ namespace TopDownRPG.Networking
 
         private void UpdateOwnerInput()
         {
-            // The aim vector is 3D. The mouse or right stick chooses a point in the scene;
-            // yaw + pitch come from that point relative to the character's weapon origin.
-            Vector2 stick = stickAimAction.ReadValue<Vector2>();
-            if (stick.sqrMagnitude > 0.06f)
+            // Shoulder-camera aim: the center of the screen defines the target.
+            // Player yaw follows camera yaw. Weapon pitch is derived from the 3D
+            // direction from StrikeOrigin to the camera's crosshair target.
+            // No independent attack-height control exists.
+            if (shoulderCamera != null && ownerCamera != null)
             {
-                useGamepadAim = true;
-                gamepadAimDirection = stick.normalized;
-            }
-            if (Mouse.current != null && Mouse.current.delta.ReadValue().sqrMagnitude > 1f)
-                useGamepadAim = false;
+                aimYaw = shoulderCamera.Yaw;
+                Ray ray = new Ray(ownerCamera.transform.position, shoulderCamera.LookRotation * Vector3.forward);
+                if (!TryFindAimPoint(ray, out Vector3 targetPoint))
+                    targetPoint = ray.GetPoint(maxAimRayDistance);
 
-            if (ownerCamera != null)
-            {
-                Vector2 cursor;
-                if (useGamepadAim)
+                Vector3 toPoint = targetPoint - StrikeOrigin;
+                if (toPoint.sqrMagnitude > 0.01f)
                 {
-                    Vector3 playerScreen = ownerCamera.WorldToScreenPoint(StrikeOrigin);
-                    float pixelRadius = Mathf.Min(Screen.width, Screen.height) * gamepadAimRadius;
-                    cursor = new Vector2(playerScreen.x, playerScreen.y) + gamepadAimDirection * pixelRadius;
-                }
-                else
-                {
-                    cursor = pointerAction.ReadValue<Vector2>();
-                }
-
-                Ray ray = ownerCamera.ScreenPointToRay(cursor);
-                if (TryFindAimPoint(ray, out Vector3 targetPoint))
-                {
-                    Vector3 toPoint = targetPoint - StrikeOrigin;
-                    if (toPoint.sqrMagnitude > 0.01f)
-                    {
-                        // One directional vector determines both the horizontal facing and
-                        // the vertical tilt of all attack trajectories.
-                        float horizontalDistance = new Vector2(toPoint.x, toPoint.z).magnitude;
-                        if (horizontalDistance > 0.05f)
-                            aimYaw = Mathf.Atan2(toPoint.x, toPoint.z) * Mathf.Rad2Deg;
-                        aimPitch = Mathf.Clamp(Mathf.Atan2(toPoint.y,
-                            Mathf.Max(0.05f, horizontalDistance)) * Mathf.Rad2Deg,
-                            -maxAimPitch, maxAimPitch);
-                        aimPoint = targetPoint;
-                    }
+                    float horizontalDistance = new Vector2(toPoint.x, toPoint.z).magnitude;
+                    if (horizontalDistance > 0.05f)
+                        aimYaw = Mathf.Atan2(toPoint.x, toPoint.z) * Mathf.Rad2Deg;
+                    aimPitch = Mathf.Clamp(Mathf.Atan2(toPoint.y,
+                        Mathf.Max(0.05f, horizontalDistance)) * Mathf.Rad2Deg,
+                        -maxAimPitch, maxAimPitch);
+                    aimPoint = targetPoint;
                 }
             }
 
             if (localAimMarker != null) localAimMarker.position = aimPoint;
             if (weaponVisuals != null) weaponVisuals.SetReadyPitch(aimPitch);
 
-            HandleAttackButton(horizontalAction, ref horizontalPressedAt, ref horizontalHeld,
-                AttackType.Horizontal, AttackType.Spin);
+            // Clicking to recapture the cursor must not also trigger an attack.
+            if (shoulderCamera != null && Mouse.current != null &&
+                (shoulderCamera.SuppressPrimaryMouseAttack ||
+                 (Mouse.current.leftButton.wasPressedThisFrame &&
+                  Cursor.lockState != CursorLockMode.Locked)))
+            {
+                horizontalPressedAt = 0f;
+                horizontalHeld = false;
+            }
+            else
+            {
+                HandleAttackButton(horizontalAction, ref horizontalPressedAt, ref horizontalHeld,
+                    AttackType.Horizontal, AttackType.Spin);
+            }
             HandleAttackButton(thrustAction, ref thrustPressedAt, ref thrustHeld,
                 AttackType.Thrust, AttackType.Vertical);
             HandleDefenseButton();
@@ -284,13 +281,8 @@ namespace TopDownRPG.Networking
             }
             if (found) return true;
 
-            // No geometry under the cursor: aim toward the ground at player's feet.
-            Plane ground = new Plane(Vector3.up, new Vector3(0f, FeetWorldY, 0f));
-            if (ground.Raycast(ray, out float distance) && distance <= maxAimRayDistance)
-            {
-                point = ray.GetPoint(distance);
-                return true;
-            }
+            // When the crosshair is in the sky, the caller uses the ray's far point.
+            // Never force shoulder-camera aim down to the ground plane.
             return false;
         }
 
@@ -308,8 +300,10 @@ namespace TopDownRPG.Networking
                 held = true;
                 RequestAttackRpc((byte)holdAttack, aimYaw, aimPitch);
             }
-            if (action.WasReleasedThisFrame() && !held)
+            // A release without a corresponding press should never create an attack.
+            if (action.WasReleasedThisFrame() && !held && pressedAt > 0f)
                 RequestAttackRpc((byte)tapped, aimYaw, aimPitch);
+            if (action.WasReleasedThisFrame()) pressedAt = 0f;
         }
 
         private void HandleDefenseButton()
@@ -373,10 +367,11 @@ namespace TopDownRPG.Networking
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (attacking || blocking || dodgeRemaining > 0f || Time.time < nextDodgeTime || Time.time < staggerUntil) return;
 
-            Vector3 move = new Vector3(serverMove.x, 0f, serverMove.y);
+            Quaternion facing = Quaternion.Euler(0f, serverAimYaw, 0f);
+            Vector3 move = facing * new Vector3(serverMove.x, 0f, serverMove.y);
             dodgeDirection = move.sqrMagnitude > 0.01f
                 ? move.normalized
-                : Quaternion.Euler(0f, serverAimYaw, 0f) * Vector3.forward;
+                : facing * Vector3.forward;
             dodgeRemaining = dodgeDuration;
             nextDodgeTime = Time.time + dodgeDuration + dodgeCooldown;
             DodgeVisualRpc();
@@ -449,7 +444,10 @@ namespace TopDownRPG.Networking
             if (!attacking && dodgeRemaining <= 0f)
                 transform.rotation = Quaternion.Euler(0f, serverAimYaw, 0f);
 
-            Vector3 horizontal = new Vector3(movement.x, 0f, movement.y);
+            // Input is local to the player's facing; no world-axis WASD drift.
+            // W/S = forward/back; A/D = strafe left/right.
+            Vector3 horizontal = Quaternion.Euler(0f, serverAimYaw, 0f) *
+                new Vector3(movement.x, 0f, movement.y);
             float speed = sprinting ? sprintSpeed : walkSpeed;
             if (blocking) speed *= 0.45f;
             if (attacking) speed *= 0.45f;
